@@ -116,7 +116,7 @@ static Value value_from_tt(Value v, int ply, int r50c);
 static void update_pv(Move *pv, Move move, Move *childPv);
 static void update_cm_stats(Stack *ss, Piece pc, Square s, int bonus);
 static void update_quiet_stats(const Position *pos, Stack *ss, Move move,
-    int bonus, Depth depth);
+    int bonus);
 static void update_capture_stats(const Position *pos, Move move, Move *captures,
     int captureCnt, int bonus);
 static void check_time(void);
@@ -779,7 +779,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     if (ttMove) {
       if (ttValue >= beta) {
         if (!ttCapture)
-          update_quiet_stats(pos, ss, ttMove, stat_bonus(depth), depth);
+          update_quiet_stats(pos, ss, ttMove, stat_bonus(depth));
 
         // Extra penalty for early quiet moves of the previous ply
         if ((ss-1)->moveCount <= 2 && !captured_piece())
@@ -1436,7 +1436,7 @@ moves_loop: // When in check search starts from here
       int bonus =  bestValue > beta + 137
                  ? stat_bonus(depth + 1)
                  : stat_bonus(depth);
-      update_quiet_stats(pos, ss, bestMove, bonus, depth);
+      update_quiet_stats(pos, ss, bestMove, bonus);
 
       // Decrease all the other played quiet moves
       for (int i = 0; i < quietCount; i++) {
@@ -1518,13 +1518,12 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
   TTEntry *tte;
   Key posKey;
   Move ttMove, move, bestMove;
-  Value bestValue, value, ttValue, futilityValue, futilityBase, oldAlpha;
-  bool pvHit, givesCheck;
+  Value bestValue, value, ttValue, futilityValue, futilityBase;
+  bool pvHit, givesCheck, captureOrPromotion;
   Depth ttDepth;
   int moveCount;
 
   if (PvNode) {
-    oldAlpha = alpha; // To flag BOUND_EXACT when eval above alpha and no available moves
     (ss+1)->pv = pv;
     ss->pv[0] = 0;
   }
@@ -1590,7 +1589,7 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
     if (PvNode && bestValue > alpha)
       alpha = bestValue;
 
-    futilityBase = bestValue + 155;
+    futilityBase = bestValue + 153;
   }
 
   ss->history = &(*pos->counterMoveHistory)[0][0];
@@ -1599,19 +1598,26 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
   // to search the moves. Because the depth is <= 0 here, only captures,
   // queen promotions and checks (only if depth >= DEPTH_QS_CHECKS) will
   // be generated.
-  mp_init_q(pos, ttMove, depth, to_sq((ss-1)->currentMove));
+  Square prevSq = to_sq((ss-1)->currentMove);
+  mp_init_q(pos, ttMove, depth, prevSq);
+
+  int quietCheckEvasions = 0;
 
   // Loop through the moves until no moves remain or a beta cutoff occurs
   while ((move = next_move(pos, 0))) {
     assert(move_is_ok(move));
 
-    givesCheck = gives_check(pos, ss, move);
+    if (!is_legal(pos, move))
+      continue;
 
+    givesCheck = gives_check(pos, ss, move);
+    captureOrPromotion = is_capture(pos, move);
     moveCount++;
 
     // Futility pruning and moveCount pruning
     if (    bestValue > VALUE_TB_LOSS_IN_MAX_PLY
         && !givesCheck
+        && to_sq(move) != prevSq
         &&  futilityBase > -VALUE_KNOWN_WIN
         && type_of_m(move) != PROMOTION)
     {
@@ -1652,9 +1658,17 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
     if (  !captureOrPromotion
         && bestValue > VALUE_TB_LOSS_IN_MAX_PLY
-        && (*(ss-1)->history)[moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold
-        && (*(ss-2)->history)[moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold)
+        && (*(ss-1)->history)[moved_piece(move)][to_sq(move)] < 0
+        && (*(ss-2)->history)[moved_piece(move)][to_sq(move)] < 0)
       continue;
+
+    // We prune after 2nd quiet check evasion where being 'in check' is implicitly checked through the counter
+    // and being a 'quiet' apart from being a tt move is assumed after an increment because captures are pushed ahead.
+    if (   bestValue > VALUE_TB_LOSS_IN_MAX_PLY
+        && quietCheckEvasions > 1)
+        break;
+
+    quietCheckEvasions += !captureOrPromotion && InCheck;
 
     // Make and search the move
     do_move(pos, move, givesCheck);
@@ -1692,8 +1706,7 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
     return mated_in(ss->ply); // Plies to mate from the root
 
   tte_save(tte, posKey, value_to_tt(bestValue, ss->ply), pvHit,
-      bestValue >= beta ? BOUND_LOWER :
-      PvNode && bestValue > oldAlpha  ? BOUND_EXACT : BOUND_UPPER,
+      bestValue >= beta ? BOUND_LOWER : BOUND_UPPER,
       ttDepth, bestMove, ss->staticEval);
 
   assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
@@ -1835,7 +1848,7 @@ static void update_capture_stats(const Position *pos, Move move, Move *captures,
 // plus follow-up move history when a new quiet best move is found.
 
 static void update_quiet_stats(const Position *pos, Stack *ss, Move move,
-    int bonus, Depth depth)
+    int bonus)
 {
   if (ss->killers[0] != move) {
     ss->killers[1] = ss->killers[0];
@@ -1845,9 +1858,6 @@ static void update_quiet_stats(const Position *pos, Stack *ss, Move move,
   Color c = stm();
   history_update(*pos->mainHistory, c, move, bonus);
   update_cm_stats(ss, moved_piece(move), to_sq(move), bonus);
-
-  if (type_of_p(moved_piece(move)) != PAWN)
-    history_update(*pos->mainHistory, c, reverse_move(move), -bonus);
 
   if (move_is_ok((ss-1)->currentMove)) {
     Square prevSq = to_sq((ss-1)->currentMove);
