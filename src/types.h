@@ -127,7 +127,7 @@
 typedef uint64_t Key;
 typedef uint64_t Bitboard;
 
-enum { MAX_MOVES = 256, MAX_PLY = 246 };
+enum { MAX_MOVES = 128, MAX_PLY = 123 };
 
 // A move needs 16 bits to be stored
 //
