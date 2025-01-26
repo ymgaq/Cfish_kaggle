@@ -30,8 +30,6 @@
 #include "timeman.h"
 #include "uci.h"
 
-extern void benchmark(Position *pos, char *str);
-
 // FEN string of the initial position, normal chess
 static const char StartFEN[] =
   "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -195,13 +193,6 @@ static void go(Position *pos, char *str)
       Limits.infinite = true;
     else if (strcmp(token, "ponder") == 0)
       ponderMode = true;
-    else if (strcmp(token, "perft") == 0) {
-      char str_buf[64];
-      sprintf(str_buf, "%d %d %d current perft", option_value(OPT_HASH),
-                    option_value(OPT_THREADS), atoi(strtok(NULL, " \t")));
-      benchmark(pos, str_buf);
-      return;
-    }
   }
 
   start_thinking(pos, ponderMode);
@@ -335,16 +326,6 @@ void uci_loop(int argc, char **argv)
     else if (strcmp(token, "go") == 0)        go(&pos, str);
     else if (strcmp(token, "position") == 0)  position(&pos, str);
     else if (strcmp(token, "setoption") == 0) setoption(str);
-
-    // Additional custom non-UCI commands, useful for debugging
-    else if (strcmp(token, "bench") == 0)     benchmark(&pos, str);
-    else if (strcmp(token, "d") == 0)         print_pos(&pos);
-    else if (strcmp(token, "perft") == 0) {
-      sprintf(str_buf, "%d %d %d current perft", option_value(OPT_HASH),
-                    option_value(OPT_THREADS), atoi(str));
-      benchmark(&pos, str_buf);
-    }
-    else if (strcmp(token, "compiler") == 0)  print_compiler_info();
     else if (strncmp(token, "#", 1)) {
       printf("Unknown command: %s %s\n", token, str);
       fflush(stdout);

@@ -29,7 +29,6 @@
 #include "polybook.h"
 #include "search.h"
 #include "settings.h"
-#include "tbprobe.h"
 #include "timeman.h"
 #include "thread.h"
 #include "tt.h"
@@ -39,10 +38,6 @@
 #define store_rlx(x,y) atomic_store_explicit(&(x), y, memory_order_relaxed)
 
 LimitsType Limits;
-
-int TB_Cardinality, TB_CardinalityDTM;
-static bool TB_RootInTB, TB_UseRule50;
-static Depth TB_ProbeDepth;
 
 static int base_ct;
 
@@ -159,8 +154,6 @@ void search_clear(void)
     stats_clear(pos->mainHistory);
     stats_clear(pos->captureHistory);
   }
-
-  TB_release();
 
   mainThread.previousScore = VALUE_INFINITE;
   mainThread.previousTimeReduction = 1;
@@ -793,59 +786,6 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     }
     if (rule50_count() < 90)
       return ttValue;
-  }
-
-  // Step 5. Tablebase probe
-  if (!rootNode && TB_Cardinality) {
-    int piecesCnt = popcount(pieces());
-
-    if (    piecesCnt <= TB_Cardinality
-        && (piecesCnt <  TB_Cardinality || depth >= TB_ProbeDepth)
-        &&  rule50_count() == 0
-        && !can_castle_any())
-    {
-      int found, wdl = TB_probe_wdl(pos, &found);
-
-      if (found) {
-        pos->tbHits++;
-
-        int drawScore = TB_UseRule50 ? 1 : 0;
-
-        value =  wdl < -drawScore ? VALUE_MATED_IN_MAX_PLY + ss->ply + 1
-               : wdl >  drawScore ? VALUE_MATE_IN_MAX_PLY  - ss->ply - 1
-                                  : VALUE_DRAW + 2 * wdl * drawScore;
-
-        int b =  wdl < -drawScore ? BOUND_UPPER
-               : wdl >  drawScore ? BOUND_LOWER : BOUND_EXACT;
-
-        if (    b == BOUND_EXACT
-            || (b == BOUND_LOWER ? value >= beta : value <= alpha))
-        {
-          tte_save(tte, posKey, value_to_tt(value, ss->ply), ss->ttPv, b,
-              min(MAX_PLY - 1, depth + 6), 0, VALUE_NONE);
-          return value;
-        }
-
-        if (piecesCnt <= TB_CardinalityDTM) {
-          Value mate = TB_probe_dtm(pos, wdl, &found);
-          if (found) {
-            mate += wdl > 0 ? -ss->ply : ss->ply;
-            tte_save(tte, posKey, value_to_tt(mate, ss->ply), ss->ttPv,
-                BOUND_EXACT, min(MAX_PLY - 1, depth + 6), 0, VALUE_NONE);
-            return mate;
-          }
-        }
-
-        if (PvNode) {
-          if (b == BOUND_LOWER) {
-            bestValue = value;
-            if (bestValue > alpha)
-              alpha = bestValue;
-          } else
-            maxValue = value;
-        }
-      }
-    }
   }
 
   // Step 6. Static evaluation of the position
@@ -1949,17 +1889,7 @@ static void uci_print_pv(Position *pos, Depth depth, Value alpha, Value beta)
     if (v == -VALUE_INFINITE)
       v = VALUE_ZERO;
 
-    bool tb = TB_RootInTB && abs(v) < VALUE_MATE_IN_MAX_PLY;
-    if (tb)
-      v = rm->move[i].tbScore;
-
-    // An incomplete mate PV may be caused by cutoffs in qsearch() and
-    // by TB cutoffs. We try to complete the mate PV if we may be in the
-    // latter case.
-    if (   abs(v) > VALUE_MATE - MAX_MATE_PLY
-        && rm->move[i].pvSize < VALUE_MATE - abs(v)
-        && TB_MaxCardinalityDTM > 0)
-      TB_expand_mate(pos, &rm->move[i]);
+    bool tb = false;
 
     printf("info depth %d seldepth %d multipv %d score %s",
            d, rm->move[i].selDepth + 1, i + 1,
@@ -2018,53 +1948,6 @@ static int extract_ponder_from_tt(RootMove *rm, Position *pos)
   return rm->pvSize > 1;
 }
 
-static void TB_rank_root_moves(Position *pos, RootMoves *rm)
-{
-  TB_RootInTB = false;
-  TB_UseRule50 = option_value(OPT_SYZ_50_MOVE);
-  TB_ProbeDepth = option_value(OPT_SYZ_PROBE_DEPTH);
-  TB_Cardinality = option_value(OPT_SYZ_PROBE_LIMIT);
-  bool dtz_available = true, dtm_available = false;
-
-  if (TB_Cardinality > TB_MaxCardinality) {
-    TB_Cardinality = TB_MaxCardinality;
-    TB_ProbeDepth = 0;
-  }
-
-  TB_CardinalityDTM =  option_value(OPT_SYZ_USE_DTM)
-                     ? min(TB_Cardinality, TB_MaxCardinalityDTM)
-                     : 0;
-
-  if (TB_Cardinality >= popcount(pieces()) && !can_castle_any()) {
-    // Try to rank moves using DTZ tables.
-    TB_RootInTB = TB_root_probe_dtz(pos, rm);
-
-    if (!TB_RootInTB) {
-      // DTZ tables are missing.
-      dtz_available = false;
-
-      // Try to rank moves using WDL tables as fallback.
-      TB_RootInTB = TB_root_probe_wdl(pos, rm);
-    }
-
-    // If ranking was successful, try to obtain mate values from DTM tables.
-    if (TB_RootInTB && TB_CardinalityDTM >= popcount(pieces()))
-      dtm_available = TB_root_probe_dtm(pos, rm);
-  }
-
-  if (TB_RootInTB) { // Ranking was successful.
-    // Sort moves according to TB rank.
-    stable_sort(rm->move, rm->size);
-
-    // Probe during search only if DTM and DTZ are not available and winning.
-    if (dtm_available || dtz_available || rm->move[0].tbRank <= 0)
-      TB_Cardinality = 0;
-  }
-  else // Ranking was not successful.
-    for (int i = 0; i < rm->size; i++)
-      rm->move[i].tbRank = 0;
-}
-
 
 // start_thinking() wakes up the main thread to start a new search,
 // then returns immediately.
@@ -2100,9 +1983,6 @@ void start_thinking(Position *root, bool ponderMode)
   for (int i = 0; i < moves->size; i++)
     moves->move[i].pv[0] = list[i].move;
 
-  // Rank root moves if root position is a TB position.
-  TB_rank_root_moves(root, moves);
-
   for (int idx = 0; idx < Threads.numThreads; idx++) {
     Position *pos = Threads.pos[idx];
     pos->selDepth = 0;
@@ -2129,9 +2009,6 @@ void start_thinking(Position *root, bool ponderMode)
     (pos->st-1)->endMoves = pos->moveList;
     pos_set_check_info(pos);
   }
-
-  if (TB_RootInTB)
-    Threads.pos[0]->tbHits = end - list;
 
   Threads.searching = true;
   thread_wake_up(threads_main(), THREAD_SEARCH);

@@ -38,9 +38,9 @@ BINDIR = $(PREFIX)/bin
 PGOBENCH = ./$(EXE) bench 16 1 15 default depth nnue
 
 ### Object files
-OBJS = benchmark.o bitbase.o bitboard.o endgame.o evaluate.o main.o \
+OBJS = bitbase.o bitboard.o endgame.o evaluate.o main.o \
 	material.o misc.o movegen.o movepick.o pawns.o position.o psqt.o \
-	search.o tbprobe.o thread.o timeman.o tt.o uci.o ucioption.o \
+	search.o thread.o timeman.o tt.o uci.o ucioption.o \
         numa.o settings.o polybook.o
 
 ### ==========================================================================

@@ -9,7 +9,6 @@
 #include "movegen.h"
 #include "pawns.h"
 #include "position.h"
-#include "tbprobe.h"
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
@@ -121,16 +120,6 @@ void print_pos(Position *pos)
   for (Bitboard b = checkers(); b; )
     printf("%s ", uci_square(buf, pop_lsb(&b)));
 
-  if (popcount(pieces()) <= TB_MaxCardinality && !can_castle_cr(ANY_CASTLING)) {
-    int s1, s2;
-    int wdl = TB_probe_wdl(pos, &s1);
-    int dtz = TB_probe_dtz(pos, &s2);
-    printf("\nTablebases WDL: %4d (%d)\nTablebases DTZ: %4d (%d)", wdl, s1, dtz, s2);
-    if (s1 && wdl != 0) {
-      Value dtm = TB_probe_dtm(pos, wdl, &s1);
-      printf("\nTablebases DTM: %s (%d)", uci_value(buf, dtm), s1);
-    }
-  }
   printf("\n");
   fflush(stdout);
   funlockfile(stdout);

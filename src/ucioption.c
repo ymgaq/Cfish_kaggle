@@ -33,7 +33,6 @@
 #include "polybook.h"
 #include "search.h"
 #include "settings.h"
-#include "tbprobe.h"
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
@@ -66,10 +65,7 @@ static void on_threads(Option *opt)
   delayedSettings.numThreads = opt->value;
 }
 
-static void on_tb_path(Option *opt)
-{
-  TB_init(opt->valString);
-}
+static void on_tb_path(Option *opt) {}
 
 static void on_large_pages(Option *opt)
 {

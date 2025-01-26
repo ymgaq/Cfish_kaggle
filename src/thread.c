@@ -30,7 +30,6 @@
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
-#include "tbprobe.h"
 
 static void thread_idle_loop(Position *pos);
 
