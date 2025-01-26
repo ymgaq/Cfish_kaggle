@@ -47,19 +47,184 @@ static Bitboard sliding_attack(int dirs[], Square sq, Bitboard occupied)
 }
 #endif
 
-#if defined(MAGIC_FANCY)
-#include "magic-fancy.c"
-#elif defined(MAGIC_PLAIN)
-#include "magic-plain.c"
-#elif defined(MAGIC_BLACK)
-#include "magic-black.c"
-#elif defined(BMI2_FANCY)
-#include "bmi2-fancy.c"
-#elif defined(BMI2_PLAIN)
-#include "bmi2-plain.c"
-#elif defined(AVX2_BITBOARD)
-#include "avx2-bitboard.c"
-#endif
+// #if defined(MAGIC_FANCY)
+// #include "magic-fancy.c"
+// #elif defined(MAGIC_PLAIN)
+// #include "magic-plain.c"
+// #elif defined(MAGIC_BLACK)
+// #include "magic-black.c"
+// #elif defined(BMI2_FANCY)
+// #include "bmi2-fancy.c"
+// #elif defined(BMI2_PLAIN)
+// #include "bmi2-plain.c"
+// #elif defined(AVX2_BITBOARD)
+// #include "avx2-bitboard.c"
+// #endif
+
+// 各方向のマスクと攻撃テーブル
+Bitboard RankAttacks[64][64];
+Bitboard FileAttacks[64][64];
+Bitboard DiagAttacks[64][64];
+Bitboard AntiDiagAttacks[64][64];
+
+Bitboard RankMasks[64];
+Bitboard FileMasks[64];
+Bitboard DiagMasks[64];
+Bitboard AntiDiagMasks[64];
+
+// ランク攻撃の初期化
+void init_rank_attacks() {
+    for (Square sq = 0; sq < 64; ++sq) {
+        int rank = rank_of(sq);
+        int file = file_of(sq);
+        RankMasks[sq] = rank_bb(rank) & ~FileABB & ~FileHBB;
+
+        for (int occ = 0; occ < 64; occ++) {
+            Bitboard attack = 0;
+            // 左方向
+            for (int f = file - 1; f >= 0; f--) {
+                Square sqLeft = make_square(f, rank);
+                Bitboard sqLeftBB = sq_bb(sqLeft);
+                attack |= sqLeftBB;
+                int bitIndex = pext(sqLeftBB, RankMasks[sq]);
+                if (f > 0 && (occ & bitIndex)) break;
+            }
+            // 右方向
+            for (int f = file + 1; f < 8; f++) {
+                Square sqRight = make_square(f, rank);
+                Bitboard sqRightBB = sq_bb(sqRight);
+                attack |= sqRightBB;
+                int bitIndex = pext(sqRightBB, RankMasks[sq]);
+                if (f < 7 && (occ & bitIndex)) break;
+            }
+
+            RankAttacks[sq][occ] = attack;
+        }
+    }
+}
+
+// ファイル攻撃の初期化
+void init_file_attacks() {
+    for (Square sq = 0; sq < 64; ++sq) {
+        int rank = rank_of(sq);
+        int file = file_of(sq);
+        FileMasks[sq] = file_bb(file) & ~Rank1BB & ~Rank8BB;
+
+        for (int occ = 0; occ < 64; occ++) {
+            Bitboard attack = 0;
+            // 上方向
+            for (int r = rank - 1; r >= 0; r--) {
+                Square sqUp = make_square(file, r);
+                Bitboard sqUpBB = sq_bb(sqUp);
+                attack |= sqUpBB;
+                int bitIndex = pext(sqUpBB, FileMasks[sq]);
+                if (r > 0 && (occ & bitIndex)) break;
+            }
+            // 下方向
+            for (int r = rank + 1; r < 8; r++) {
+                Square sqDown = make_square(file, r);
+                Bitboard sqDownBB = sq_bb(sqDown);
+                attack |= sqDownBB;
+                int bitIndex = pext(sqDownBB, FileMasks[sq]);
+                if (r < 7 && (occ & bitIndex)) break;
+            }
+
+            FileAttacks[sq][occ] = attack;
+        }
+    }
+}
+
+// 対角線攻撃の初期化
+void init_diag_attacks() {
+    for (Square sq = 0; sq < 64; ++sq) {
+        int rank = rank_of(sq);
+        int file = file_of(sq);
+
+        DiagMasks[sq] = 0;
+        // 左上方向のマスク
+        for (int r = rank - 1, f = file - 1; r > 0 && f > 0; r--, f--) {
+            DiagMasks[sq] |= sq_bb(make_square(f, r));
+        }
+        // 右下方向のマスク
+        for (int r = rank + 1, f = file + 1; r < 7 && f < 7; r++, f++) {
+            DiagMasks[sq] |= sq_bb(make_square(f, r));
+        }
+        // 自分自身が端でなければ自身を含む
+        if (rank > 0 && rank < 7 && file > 0 && file < 7) {
+            DiagMasks[sq] |= sq_bb(sq);
+        }
+
+        for (int occ = 0; occ < 64; occ++) {
+            Bitboard attack = 0;
+            // 左上
+            for (int r = rank - 1, f = file - 1; r >= 0 && f >= 0; r--, f--) {
+                Bitboard sqUpLeft = sq_bb(make_square(f, r));
+                attack |= sqUpLeft;
+                int bitIndex = pext(sqUpLeft, DiagMasks[sq]);
+                if (r > 0 && f > 0 && (occ & bitIndex)) break;
+            }
+            // 右下
+            for (int r = rank + 1, f = file + 1; r < 8 && f < 8; r++, f++) {
+                Bitboard sqDownRight = sq_bb(make_square(f, r));
+                attack |= sqDownRight;
+                int bitIndex = pext(sqDownRight, DiagMasks[sq]);
+                if (r < 7 && f < 7 && (occ & bitIndex)) break;
+            }
+
+            DiagAttacks[sq][occ] = attack;
+        }
+    }
+}
+
+// 逆対角線攻撃の初期化
+void init_anti_diag_atttack() {
+    for (Square sq = 0; sq < 64; ++sq) {
+        int rank = rank_of(sq);
+        int file = file_of(sq);
+
+        AntiDiagMasks[sq] = 0;
+        // 左下方向のマスク
+        for (int r = rank - 1, f = file + 1; r > 0 && f < 7; r--, f++) {
+            AntiDiagMasks[sq] |= sq_bb(make_square(f, r));
+        }
+        // 右上方向のマスク
+        for (int r = rank + 1, f = file - 1; r < 7 && f > 0; r++, f--) {
+            AntiDiagMasks[sq] |= sq_bb(make_square(f, r));
+        }
+        // 自分自身が端でなければ自身を含む
+        if (rank > 0 && rank < 7 && file > 0 && file < 7) {
+            AntiDiagMasks[sq] |= sq_bb(sq);
+        }
+
+        for (int occ = 0; occ < 64; occ++) {
+            Bitboard attack = 0;
+            // 左下
+            for (int r = rank - 1, f = file + 1; r >= 0 && f < 8; r--, f++) {
+                Bitboard sqDownLeft = sq_bb(make_square(f, r));
+                attack |= sqDownLeft;
+                int bitIndex = pext(sqDownLeft, AntiDiagMasks[sq]);
+                if (r > 0 && f < 7 && (occ & bitIndex)) break;
+            }
+            // 右上
+            for (int r = rank + 1, f = file - 1; r < 8 && f >= 0; r++, f--) {
+                Bitboard sqUpRight = sq_bb(make_square(f, r));
+                attack |= sqUpRight;
+                int bitIndex = pext(sqUpRight, AntiDiagMasks[sq]);
+                if (r < 7 && f > 0 && (occ & bitIndex)) break;
+            }
+
+            AntiDiagAttacks[sq][occ] = attack;
+        }
+    }
+}
+
+static void init_sliding_attacks(void)
+{
+  init_rank_attacks();
+  init_file_attacks();
+  init_diag_attacks();
+  init_anti_diag_atttack();
+}
 
 Bitboard SquareBB[64];
 Bitboard FileBB[8];
