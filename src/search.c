@@ -49,20 +49,17 @@ static int base_ct;
 // Different node types, used as template parameter
 enum { NonPV, PV };
 
-static const uint64_t ttHitAverageWindow     = 4096;
-static const uint64_t ttHitAverageResolution = 1024;
-
 INLINE int futility_margin(Depth d, bool improving) {
-  return 234 * (d - improving);
+  return 165 * (d - improving);
 }
 
 // Reductions lookup tables, initialized at startup
 static int Reductions[MAX_MOVES]; // [depth or moveNumber]
 
-INLINE Depth reduction(int i, Depth d, int mn)
+INLINE Depth reduction(int i, Depth d, int mn, Value delta, Value rootDelta)
 {
   int r = Reductions[d] * Reductions[mn];
-  return (r + 503) / 1024 + (!i && r > 915);
+  return (r + 1642 - delta * 1024 / rootDelta) / 1024 + (!i && r > 916);
 }
 
 INLINE int futility_move_count(bool improving, Depth depth)
@@ -75,7 +72,7 @@ INLINE int futility_move_count(bool improving, Depth depth)
 static Value stat_bonus(Depth depth)
 {
   int d = depth;
-  return d > 14 ? 66 : 6 * d * d + 231 * d - 206;
+  return min((12 * d + 282) * d - 349 , 1594);
 }
 
 // Add a small random component to draw evaluations to keep search dynamic
@@ -132,7 +129,7 @@ static int extract_ponder_from_tt(RootMove *rm, Position *pos);
 void search_init(void)
 {
   for (int i = 1; i < MAX_MOVES; i++)
-    Reductions[i] = (21.3 + 2 * log(Threads.numThreads)) * log(i + 0.25 * log(i));
+    Reductions[i] = (20.26 + log(Threads.numThreads) / 2) * log(i);
 }
 
 
@@ -424,10 +421,6 @@ void thread_search(Position *pos)
         mainThread.iterValue[i] = mainThread.previousScore;
   }
 
-  memmove(&((*pos->lowPlyHistory)[0]), &((*pos->lowPlyHistory)[2]),
-      (MAX_LPH - 2) * sizeof((*pos->lowPlyHistory)[0]));
-  memset(&((*pos->lowPlyHistory)[MAX_LPH - 2]), 0, 2 * sizeof((*pos->lowPlyHistory)[0]));
-
   int multiPV = option_value(OPT_MULTI_PV);
 #if 0
   Skill skill(option_value(OPT_SKILL_LEVEL));
@@ -440,7 +433,6 @@ void thread_search(Position *pos)
 
   RootMoves *rm = pos->rootMoves;
   multiPV = min(multiPV, rm->size);
-  pos->ttHitAverage = ttHitAverageWindow * ttHitAverageResolution / 2;
   int searchAgainCounter = 0;
 
   // Iterative deepening loop until requested to stop or the target depth
@@ -492,7 +484,7 @@ void thread_search(Position *pos)
       // Reset aspiration window starting size
       if (pos->rootDepth >= 4) {
         Value previousScore = rm->move[pvIdx].previousScore;
-        delta = 17;
+        delta = 10 + previousScore * previousScore / 15620;
         alpha = max(previousScore - delta, -VALUE_INFINITE);
         beta  = min(previousScore + delta,  VALUE_INFINITE);
 
@@ -741,6 +733,8 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
         return alpha;
     }
   }
+  else
+    pos->rootDelta = beta - alpha;
 
   assert(0 <= ss->ply && ss->ply < MAX_PLY);
 
@@ -770,16 +764,6 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   if (!excludedMove)
     ss->ttPv = PvNode || (ss->ttHit && tte_is_pv(tte));
   formerPv = ss->ttPv && !PvNode;
-
-  if (   ss->ttPv
-      && depth > 12
-      && ss->ply - 1 < MAX_LPH
-      && !captured_piece()
-      && move_is_ok((ss-1)->currentMove))
-    lph_update(*pos->lowPlyHistory, ss->ply - 1, (ss-1)->currentMove, stat_bonus(depth - 5));
-
-  // pos->ttHitAverage can be used to approximate the running average of ttHit
-  pos->ttHitAverage = (ttHitAverageWindow - 1) * pos->ttHitAverage / ttHitAverageWindow + ttHitAverageResolution * ss->ttHit;
 
   // At non-PV nodes we check for an early TT cutoff.
   if (  !PvNode
@@ -1102,6 +1086,8 @@ moves_loop: // When in check search starts from here
     // Calculate new depth for this move
     newDepth = depth - 1;
 
+    Value delta = beta - alpha;
+
     // Step 13. Pruning at shallow depth
     if (  !rootNode
         && non_pawn_material_c(stm())
@@ -1111,7 +1097,7 @@ moves_loop: // When in check search starts from here
       moveCountPruning = moveCount >= futility_move_count(improving, depth);
 
       // Reduced depth of the next LMR search
-      int lmrDepth = max(newDepth - reduction(improving, depth, moveCount), 0);
+      int lmrDepth = max(newDepth - reduction(improving, depth, moveCount, delta, pos->rootDelta), 0);
 
       if (   captureOrPromotion
           || givesCheck)
@@ -1243,15 +1229,10 @@ moves_loop: // When in check search starts from here
             || moveCountPruning
             || ss->staticEval + PieceValue[EG][captured_piece()] <= alpha
             || cutNode
-            || (!PvNode && !formerPv && (*pos->captureHistory)[movedPiece][to_sq(move)][type_of_p(captured_piece())] < 3678)
-            || pos->ttHitAverage < 432 * ttHitAverageResolution * ttHitAverageWindow / 1024)
+            || (!PvNode && !formerPv && (*pos->captureHistory)[movedPiece][to_sq(move)][type_of_p(captured_piece())] < 3678))
         && (!PvNode || ss->ply > 1 || pos->threadIdx % 4 != 3))
     {
-      Depth r = reduction(improving, depth, moveCount);
-
-      // Decrease reduction if the ttHit runing average is large
-      if (pos->ttHitAverage > 537 * ttHitAverageResolution * ttHitAverageWindow / 1024)
-        r--;
+      Depth r = reduction(improving, depth, moveCount, delta, pos->rootDelta);
 
       // Decrease reduction if position is or has been on the PV and the node
       // is not likely to fail low
@@ -1837,9 +1818,6 @@ static void update_quiet_stats(const Position *pos, Stack *ss, Move move,
     Square prevSq = to_sq((ss-1)->currentMove);
     (*pos->counterMoves)[piece_on(prevSq)][prevSq] = move;
   }
-
-  if (depth > 11 && ss->ply < MAX_LPH)
-    lph_update(*pos->lowPlyHistory, ss->ply, move, stat_bonus(depth - 7));
 }
 
 #if 0
