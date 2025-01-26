@@ -860,10 +860,13 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   } else if (ss->ttHit) {
     // Never assume anything about values stored in TT
     ss->staticEval = eval = tte_eval(tte);
-    if (eval == VALUE_NONE)
+    Value psq = eg_value(psq_score());
+    if (eval == VALUE_NONE) {
       ss->staticEval = eval = evaluate(pos);
+      complexity = abs(eval - psq);
+    }
     else
-      complexity = abs(ss->staticEval - abs(eg_value(psq_score())));
+      complexity = abs(ss->staticEval - psq);
 
     // Can ttValue be used as a better position evaluation?
     if (   ttValue != VALUE_NONE
@@ -871,6 +874,8 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
       eval = ttValue;
   } else {
     ss->staticEval = eval = evaluate(pos);
+    Value psq = eg_value(psq_score());
+    complexity = abs(eval - psq);
 
     if (!excludedMove)
       tte_save(tte, posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, 0,
