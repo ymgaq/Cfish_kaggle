@@ -483,7 +483,7 @@ void thread_search(Position *pos)
 
       // Reset aspiration window starting size
       if (pos->rootDepth >= 4) {
-        Value previousScore = rm->move[pvIdx].previousScore;
+        Value previousScore = rm->move[pvIdx].averageScore;
         delta = 10 + previousScore * previousScore / 15620;
         alpha = max(previousScore - delta, -VALUE_INFINITE);
         beta  = min(previousScore + delta,  VALUE_INFINITE);
@@ -974,7 +974,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
     while (  (move = next_move(pos, 0)))
       if (move != excludedMove && is_legal(pos, move)) {
-        assert(is_capture_or_promotion(pos, move));
+        assert(is_capture(pos, move));
 
         ss->currentMove = move;
         ss->history = &(*pos->counterMoveHistory)[moved_piece(move)][to_sq(move)];
@@ -1010,7 +1010,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
 moves_loop: // When in check search starts from here
 
-  ttCapture = ttMove && is_capture_or_promotion(pos, ttMove);
+  ttCapture = ttMove && is_capture(pos, ttMove);
 
   // Step 11. A small Probcut idea, when we are in check
   probCutBeta = beta + 417;
@@ -1251,14 +1251,11 @@ moves_loop: // When in check search starts from here
     // child has been searched. In general we would like to reduce them, but
     // there are many cases where we extend a child if it has good chances
     // to be "interesting".
-    if (    depth >= 3
-        &&  moveCount > 1 + 2 * rootNode
+    if (    depth >= 2
+        &&  moveCount > 1 + (PvNode && ss->ply <= 1)
         && (   !captureOrPromotion
-            || moveCountPruning
-            || ss->staticEval + PieceValue[EG][captured_piece()] <= alpha
-            || cutNode
-            || (!PvNode && !formerPv && (*pos->captureHistory)[movedPiece][to_sq(move)][type_of_p(captured_piece())] < 3678))
-        && (!PvNode || ss->ply > 1 || pos->threadIdx % 4 != 3))
+            || !ss->ttPv
+            || (cutNode && (ss-1)->moveCount) > 1))
     {
       Depth r = reduction(improving, depth, moveCount, delta, pos->rootDelta);
 
@@ -1267,63 +1264,58 @@ moves_loop: // When in check search starts from here
       if (ss->ttPv && !likelyFailLow)
         r -= 2;
 
-      // Increase reduction at root and non-PV nodes when the best move
-      // does not change frequently
-      if ((rootNode || !PvNode) && pos->rootDepth > 10 && pos->bestMoveChanges <= 2)
-        r++;
-
       // Decrease reduction if opponent's move count is high
-      if ((ss-1)->moveCount > 13)
+      if ((ss-1)->moveCount > 7)
         r--;
 
       // Decrease reduction if ttMove has been singularly extended
       if (singularQuietLMR)
         r--;
 
-      if (!captureOrPromotion) {
-        // Increase reduction if ttMove is a capture
-        if (ttCapture)
-          r++;
-
-        // Increase reduction at root if failing high
-        if (rootNode)
-          r += pos->failedHighCnt * pos->failedHighCnt * moveCount / 512;
-
-        // Increase reduction for cut nodes
-        if (cutNode)
-          r += 2;
-
-        ss->statScore =  (*cmh )[movedPiece][to_sq(move)]
+      if (cutNode)
+        r += 2;
+      
+      if (PvNode)
+        r -= 1 + 11 / (3 + depth);
+      
+      if ((ss+1)->cutoffCnt > 3)
+        r++;
+      
+      ss->statScore =    (*cmh )[movedPiece][to_sq(move)]
                        + (*fmh )[movedPiece][to_sq(move)]
                        + (*fmh2)[movedPiece][to_sq(move)]
-                       + (*pos->mainHistory)[!stm()][from_to(move)]
-                       - 4741;
+                       + 2 * (*pos->mainHistory)[!stm()][from_to(move)]
+                       - 4433;
 
-        if (!inCheck)
-          r -= ss->statScore / 14790;
-      }
-
-      Depth d = clamp(newDepth - r, 1, newDepth + (r < -1 && moveCount <= 5));
+      r -= ss->statScore / (13628 + 4000 * (depth > 7 && depth < 19));
+      Depth d = clamp(newDepth - r, 1, newDepth + 1);
 
       value = -search_NonPV(pos, ss+1, -(alpha+1), d, 1);
 
-      doFullDepthSearch = value > alpha && d < newDepth;
-      didLMR = true;
-    } else {
-      doFullDepthSearch = !PvNode || moveCount > 1;
-      didLMR = false;
-    }
+      // Do full depth search when reduced LMR search fails high
+      if (value > alpha && d < newDepth)
+      {
+          // Adjust full depth search based on LMR results - if result
+          // was good enough search deeper, if it was bad enough search shallower
+          const bool doDeeperSearch = value > (alpha + 64 + 11 * (newDepth - d));
+          const bool doShallowerSearch = value < bestValue + newDepth;
 
-    // Step 17. Full depth search when LMR is skipped or fails high.
-    if (doFullDepthSearch) {
-      value = -search_NonPV(pos, ss+1, -(alpha+1), newDepth, !cutNode);
+          newDepth += doDeeperSearch - doShallowerSearch;
 
-      if (didLMR && !captureOrPromotion) {
+          if (newDepth > d)
+            value = -search_NonPV(pos, ss+1, -(alpha+1), newDepth, !cutNode);
+
         int bonus = value > alpha ?  stat_bonus(newDepth)
                                   : -stat_bonus(newDepth);
+        if (captureOrPromotion)
+          bonus /= 6;
 
         update_cm_stats(ss, movedPiece, to_sq(move), bonus);
       }
+    }
+    else if (!PvNode || moveCount > 1)
+    {
+      value = -search_NonPV(pos, ss+1, -(alpha+1), newDepth, !cutNode);
     }
 
     // For PV nodes only, do a full PV search on the first move or after a fail
@@ -1360,6 +1352,8 @@ moves_loop: // When in check search starts from here
           break;
         }
 
+      rm->averageScore = rm->averageScore != VALUE_ZERO ? (2 * value + rm->averageScore) / 3 : value;
+
       // PV move or new best move ?
       if (moveCount == 1 || value > alpha) {
         rm->score = value;
@@ -1374,7 +1368,7 @@ moves_loop: // When in check search starts from here
         // We record how often the best move has been changed in each
         // iteration. This information is used for time management: When
         // the best move changes frequently, we allocate some more time.
-        if (moveCount > 1)
+        if (moveCount > 1 && !pos->pvIdx)
           pos->bestMoveChanges++;
       } else
         // All other moves but the PV are set to the lowest value: this is
@@ -1393,10 +1387,21 @@ moves_loop: // When in check search starts from here
           update_pv(ss->pv, move, (ss+1)->pv);
 
         if (PvNode && value < beta) // Update alpha! Always alpha < beta
+        {
           alpha = value;
+
+          // Reduce other moves if we have found at least one score improvement
+          if (   depth > 1
+              && depth < 6
+              && beta  <  VALUE_KNOWN_WIN
+              && alpha > -VALUE_KNOWN_WIN)
+              depth -= 1;
+
+          assert(depth > 0);
+        }
         else {
+          ss->cutoffCnt++;
           assert(value >= beta); // Fail high
-          ss->statScore = 0;
           break;
         }
       }
@@ -1428,10 +1433,10 @@ moves_loop: // When in check search starts from here
                :     inCheck ? mated_in(ss->ply) : VALUE_DRAW;
   else if (bestMove) {
     // Quiet best move: update move sorting heuristics
-    if (!is_capture_or_promotion(pos, bestMove)) {
-      int bonus =  bestValue > beta + PawnValueMg
+    if (!is_capture(pos, bestMove)) {
+      int bonus =  bestValue > beta + 137
                  ? stat_bonus(depth + 1)
-                 : min(stat_bonus(depth+1), stat_bonus(depth));
+                 : stat_bonus(depth);
       update_quiet_stats(pos, ss, bestMove, bonus, depth);
 
       // Decrease all the other played quiet moves
@@ -1452,9 +1457,16 @@ moves_loop: // When in check search starts from here
       update_cm_stats(ss-1, piece_on(prevSq), prevSq, -stat_bonus(depth + 1));
   }
   // Bonus for prior countermove that caused the fail low
-  else if (   (depth >= 3 || PvNode)
+  else if (   (depth >= 5 || PvNode)
            && !captured_piece())
-    update_cm_stats(ss-1, piece_on(prevSq), prevSq, stat_bonus(depth));
+  {
+    //Assign extra bonus if current node is PvNode or cutNode
+    //or fail low was really bad
+    bool extraBonus =    PvNode
+                      || cutNode
+                      || bestValue < alpha - 62 * depth;
+    update_cm_stats(ss-1, piece_on(prevSq), prevSq, stat_bonus(depth) * (1 + extraBonus));
+  }
 
   if (PvNode)
     bestValue = min(bestValue, maxValue);
@@ -1464,10 +1476,6 @@ moves_loop: // When in check search starts from here
   // to the search tree
   if (bestValue <= alpha)
     ss->ttPv = ss->ttPv || ((ss-1)->ttPv && depth > 3);
-  // Otherwise, a countermove has been found and if the position is in the
-  // last leaf in the search tree, remove the position from the search tree.
-  else if (depth > 3)
-    ss->ttPv = ss->ttPv && (ss+1)->ttPv;
 
   if (!excludedMove && !(rootNode && pos->pvIdx))
     tte_save(tte, posKey, value_to_tt(bestValue, ss->ply), ss->ttPv,
@@ -1639,7 +1647,7 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
     }
 
     ss->currentMove = move;
-    bool captureOrPromotion = is_capture_or_promotion(pos, move);
+    bool captureOrPromotion = is_capture(pos, move);
     ss->history = &(*pos->counterMoveHistory)[moved_piece(move)]
                                            [to_sq(move)];
 
@@ -1813,7 +1821,7 @@ static void update_capture_stats(const Position *pos, Move move, Move *captures,
   Piece moved_piece = moved_piece(move);
   int captured = type_of_p(piece_on(to_sq(move)));
 
-  if (is_capture_or_promotion(pos, move))
+  if (is_capture(pos, move))
     cpth_update(*pos->captureHistory, moved_piece, to_sq(move), captured, bonus);
 
   // Decrease all the other played capture moves
