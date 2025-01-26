@@ -327,7 +327,7 @@ enum { MAX_LPH = 4 };
 
 typedef Move CounterMoveStat[16][64];
 typedef int16_t PieceToHistory[16][64];
-typedef PieceToHistory CounterMoveHistoryStat[2][2][16][64];
+typedef PieceToHistory CounterMoveHistoryStat[16][64];
 typedef int16_t ButterflyHistory[2][4096];
 typedef int16_t CapturePieceToHistory[16][64][8];
 typedef int16_t LowPlyHistory[MAX_LPH][4096];

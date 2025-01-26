@@ -151,11 +151,9 @@ void search_clear(void)
   for (int i = 0; i < numCmhTables; i++)
     if (cmhTables[i]) {
       stats_clear(cmhTables[i]);
-      for (int chk = 0; chk < 2; chk++)
-        for (int c = 0; c < 2; c++)
-          for (int j = 0; j < 16; j++)
-            for (int k = 0; k < 64; k++)
-              (*cmhTables[i])[chk][c][0][0][j][k] = CounterMovePruneThreshold - 1;
+      for (int j = 0; j < 16; j++)
+        for (int k = 0; k < 64; k++)
+          (*cmhTables[i])[0][0][j][k] = CounterMovePruneThreshold - 1;
     }
 
   for (int idx = 0; idx < Threads.numThreads; idx++) {
@@ -404,7 +402,7 @@ void thread_search(Position *pos)
   (ss-1)->endMoves = pos->moveList;
 
   for (int i = -7; i < 0; i++) {
-    ss[i].history = &(*pos->counterMoveHistory)[0][0][0][0]; // Use as sentinel
+    ss[i].history = &(*pos->counterMoveHistory)[0][0]; // Use as sentinel
     ss[i].staticEval = VALUE_NONE;
     ss[i].checkersBB = 0;
   }
@@ -930,7 +928,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     Depth R = (1062 + 68 * depth) / 256 + min((eval - beta) / 190, 3);
 
     ss->currentMove = MOVE_NULL;
-    ss->history = &(*pos->counterMoveHistory)[0][0][0][0];
+    ss->history = &(*pos->counterMoveHistory)[0][0];
 
     do_null_move(pos);
     ss->endMoves = (ss-1)->endMoves;
@@ -989,7 +987,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
         probCutCount--;
 
         ss->currentMove = move;
-        ss->history = &(*pos->counterMoveHistory)[inCheck][captureOrPromotion][moved_piece(move)][to_sq(move)];
+        ss->history = &(*pos->counterMoveHistory)[moved_piece(move)][to_sq(move)];
         givesCheck = gives_check(pos, ss, move);
         do_move(pos, move, givesCheck);
 
@@ -1227,7 +1225,7 @@ moves_loop: // When in check search starts from here
     // Update the current move (this must be done after singular extension
     // search)
     ss->currentMove = move;
-    ss->history = &(*pos->counterMoveHistory)[inCheck][captureOrPromotion][movedPiece][to_sq(move)];
+    ss->history = &(*pos->counterMoveHistory)[movedPiece][to_sq(move)];
 
     // Step 15. Make the move.
     do_move(pos, move, givesCheck);
@@ -1579,7 +1577,7 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
     futilityBase = bestValue + 155;
   }
 
-  ss->history = &(*pos->counterMoveHistory)[0][0][0][0];
+  ss->history = &(*pos->counterMoveHistory)[0][0];
 
   // Initialize move picker data for the current position, and prepare
   // to search the moves. Because the depth is <= 0 here, only captures,
@@ -1633,9 +1631,7 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
     ss->currentMove = move;
     bool captureOrPromotion = is_capture_or_promotion(pos, move);
-    ss->history = &(*pos->counterMoveHistory)[InCheck]
-                                           [captureOrPromotion]
-                                           [moved_piece(move)]
+    ss->history = &(*pos->counterMoveHistory)[moved_piece(move)]
                                            [to_sq(move)];
 
     if (  !captureOrPromotion
