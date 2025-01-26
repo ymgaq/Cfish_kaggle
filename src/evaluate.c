@@ -80,19 +80,19 @@ static const Bitboard KingFlank[8] = {
 
 // Thresholds for lazy and space evaluation
 enum {
-  LazyThreshold1 =  1565,
-  LazyThreshold2 =  1102,
+  LazyThreshold1 =  3631,
+  LazyThreshold2 =  2084,
   SpaceThreshold = 11551,
   NNUEThreshold1 =   682,
   NNUEThreshold2 =   176
 };
 
 // KingAttackWeights[PieceType] contains king attack weights by piece type
-static const int KingAttackWeights[8] = { 0, 0, 81, 52, 44, 10 };
+static const int KingAttackWeights[8] = { 0, 0, 76, 46, 45, 14 };
 
 // Penalties for enemy's safe checks
 static const int SafeCheck[][2] = {
-  {0}, {0}, { 803, 1292 }, { 639, 974 }, { 1087, 1878 }, { 759, 1132 }
+  {0}, {0}, {805, 1292}, {650, 984}, {1071, 1886}, {730, 1128}
 };
 
 #define V(v) (Value)(v)
@@ -124,61 +124,61 @@ static const Score MobilityBonus[4][32] = {
 // BishopsPawns[distance from edge] contains a file-dependent penalty for
 // pawns on squares of the same color as our bishop.
 static const Score BishopPawns[8] = {
-  S(3, 8), S(3, 9), S(2, 8), S(3, 8), S(3, 8), S(2, 8), S(3, 9), S(3, 8)
+  S(3, 8), S(3, 9), S(2, 7), S(3, 7), S(3, 7), S(2, 7), S(3, 9), S(3, 8)
 };
 
 static const Score RookOnClosedFile = S(10, 5);
-static const Score RookOnOpenFile[2] = { S(19, 6), S(47, 26) };
+static const Score RookOnOpenFile[2] = { S(18, 8), S(49, 26) };
 
 // ThreatByMinor/ByRook[attacked PieceType] contains bonuses according to
 // which piece type attacks which one. Attacks on lesser pieces which are
 // pawn defended are not considered.
 static const Score ThreatByMinor[8] = {
-  S(0, 0), S(5, 32), S(55, 41), S(77, 56), S(89,119), S(79,162)
+  S(0, 0), S(6, 37), S(64, 50), S(82, 57), S(103, 130), S(81, 163)
 };
 
 static const Score ThreatByRook[8] = {
-  S(0, 0), S(3, 44), S(37, 68), S(42, 60), S( 0, 39), S(58, 43)
+  S(0, 0), S(3, 44), S(36, 71), S(44, 59), S(0, 39), S(60, 39)
 };
 
 // PassedRank[mg/eg][Rank] contains midgame and endgame bonuses for passed
 // pawns. We don't use a Score because we process the two components
 // independently.
 static const Value PassedRank[2][8] = {
-  { V(0), V( 7), V(16), V(17), V(64), V(170), V(278) },
-  { V(0), V(27), V(32), V(40), V(71), V(174), V(262) }
+  { V(0), V( 2), V(15), V(22), V(64), V(166), V(284) },
+  { V(0), V(38), V(36), V(50), V(71), V(184), V(269) }
 };
 
 // PassedFile[File] contains a bonus according to the file of a passed pawn
 static const Score PassedFile[8] = {
-  S( 0,  0), S(11,  8), S(22, 16), S(33, 24),
-  S(33, 24), S(22, 16), S(11,  8), S( 0,  0)
+  S( 0,  0), S(13,  8), S(26, 16), S(39, 24),
+  S(39, 24), S(26, 16), S(13,  8), S( 0,  0)
 };
 
 // Assorted bonuses and penalties used by evaluation
-static const Score BishopKingProtector = S(  6,  9);
+static const Score BishopKingProtector = S(  7,  9);
 static const Score BishopOnKingRing    = S( 24,  0);
-static const Score BishopOutpost       = S( 31, 24);
+static const Score BishopOutpost       = S( 31, 25);
 static const Score BishopXRayPawns     = S(  4,  5);
 static const Score CorneredBishop      = S( 50, 50);
 static const Score FlankAttacks        = S(  8,  0);
-static const Score Hanging             = S( 69, 36);
-static const Score KnightKingProtector = S(  8,  9);
+static const Score Hanging             = S( 72, 40);
+static const Score KnightKingProtector = S(  9,  9);
 static const Score KnightOnQueen       = S( 16, 11);
-static const Score KnightOutpost       = S( 57, 38);
+static const Score KnightOutpost       = S( 54, 34);
 static const Score LongDiagonalBishop  = S( 45,  0);
 static const Score MinorBehindPawn     = S( 18,  3);
-static const Score PawnlessFlank       = S( 17, 95);
-static const Score ReachableOutpost    = S( 31, 22);
-static const Score RestrictedPiece     = S(  7,  7);
+static const Score PawnlessFlank       = S( 19, 97);
+static const Score ReachableOutpost    = S( 33, 19);
+static const Score RestrictedPiece     = S(  6,  7);
 static const Score RookOnKingRing      = S( 16,  0);
-static const Score SliderOnQueen       = S( 60, 18);
-static const Score ThreatByKing        = S( 24, 89);
+static const Score SliderOnQueen       = S( 62, 21);
+static const Score ThreatByKing        = S( 24, 87);
 static const Score ThreatByPawnPush    = S( 48, 39);
-static const Score ThreatBySafePawn    = S(173, 94);
+static const Score ThreatBySafePawn    = S(167, 99);
 static const Score TrappedRook         = S( 55, 13);
-static const Score UncontestedOutpost  = S(  1, 10);
-static const Score WeakQueen           = S( 56, 15);
+static const Score UncontestedOutpost  = S(  0, 10);
+static const Score WeakQueen           = S( 57, 19);
 static const Score WeakQueenProtection = S( 14,  0);
 
 static const Value CorneredBishopV     = 50;
@@ -781,7 +781,7 @@ static Value evaluate_classical(const Position *pos)
   // in the position struct (material + piece square tables) and the
   // material imbalance. Score is computed internally from the white point
   // of view.
-  Score score = psq_score() + material_imbalance(ei.me) + pos->contempt;
+  Score score = psq_score() + material_imbalance(ei.me);
 
   // Probe the pawn hash table
   ei.pe = pawn_probe(pos);
@@ -789,6 +789,7 @@ static Value evaluate_classical(const Position *pos)
 
   // Early exit if score is high
 #define lazy_skip(v) (abs(mg_value(score) + eg_value(score)) / 2 > v + non_pawn_material() / 64)
+// #define lazy_skip(v) (abs(mg_value(score) + eg_value(score)) > v + abs(pos->this_thread()->bestValue) * 5 / 4 + non_pawn_material() / 32)
   if (lazy_skip(LazyThreshold1))
     goto make_v;
 
@@ -836,7 +837,7 @@ make_v:
   v = (v / 16) * 16;
 
   // Side to move point of view
-  v = (stm() == WHITE ? v : -v) + Tempo;
+  v = (stm() == WHITE ? v : -v);
 
   return v;
 }
@@ -912,7 +913,7 @@ Value evaluate(const Position *pos)
 #endif
 
   // Damp down the evalation linearly when shuffling
-  v = v * (100 - rule50_count()) / 100;
+  v = v * (195 - rule50_count()) / 211;
 
   return clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 }
