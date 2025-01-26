@@ -684,7 +684,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   bool captureOrPromotion, inCheck, doFullDepthSearch, moveCountPruning;
   bool ttCapture, singularQuietLMR;
   Piece movedPiece;
-  int moveCount, captureCount, quietCount;
+  int moveCount, captureCount, quietCount, improvement, complexity;
 
   // Step 1. Initialize node
   inCheck = checkers();
@@ -741,6 +741,8 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   (ss+1)->ttPv = false;
   (ss+1)->excludedMove = bestMove = 0;
   (ss+2)->killers[0] = (ss+2)->killers[1] = 0;
+  (ss+2)->cutoffCnt    = 0;
+  ss->doubleExtensions = (ss-1)->doubleExtensions;
   Square prevSq = to_sq((ss-1)->currentMove);
 
   // Initialize statScore to zero for the grandchildren of the current
@@ -761,6 +763,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   ttValue = ss->ttHit ? value_from_tt(tte_value(tte), ss->ply, rule50_count()) : VALUE_NONE;
   ttMove =  rootNode ? pos->rootMoves->move[pos->pvIdx].pv[0]
           : ss->ttHit    ? tte_move(tte) : 0;
+  ttCapture = ttMove && is_capture(pos, ttMove);
   if (!excludedMove)
     ss->ttPv = PvNode || (ss->ttHit && tte_is_pv(tte));
   formerPv = ss->ttPv && !PvNode;
@@ -768,7 +771,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   // At non-PV nodes we check for an early TT cutoff.
   if (  !PvNode
       && ss->ttHit
-      && tte_depth(tte) >= depth
+      && tte_depth(tte) > depth - (tte_bound(tte) == BOUND_EXACT)
       && ttValue != VALUE_NONE // Possible in case of TT access race.
       && (ttValue >= beta ? (tte_bound(tte) & BOUND_LOWER)
                           : (tte_bound(tte) & BOUND_UPPER)))
@@ -776,7 +779,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     // If ttMove is quiet, update move sorting heuristics on TT hit.
     if (ttMove) {
       if (ttValue >= beta) {
-        if (!is_capture_or_promotion(pos, ttMove))
+        if (!ttCapture)
           update_quiet_stats(pos, ss, ttMove, stat_bonus(depth), depth);
 
         // Extra penalty for early quiet moves of the previous ply
@@ -784,7 +787,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
           update_cm_stats(ss-1, piece_on(prevSq), prevSq, -stat_bonus(depth + 1));
       }
       // Penalty for a quiet ttMove that fails low
-      else if (!is_capture_or_promotion(pos, ttMove)) {
+      else if (!ttCapture) {
         int penalty = -stat_bonus(depth);
         history_update(*pos->mainHistory, stm(), ttMove, penalty);
         update_cm_stats(ss, moved_piece(ttMove), to_sq(ttMove), penalty);
@@ -852,35 +855,34 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     // Skip early pruning when in check
     ss->staticEval = eval = VALUE_NONE;
     improving = false;
+    improvement = 0;
+    complexity = 0;
     goto moves_loop;
   } else if (ss->ttHit) {
     // Never assume anything about values stored in TT
-    if ((eval = tte_eval(tte)) == VALUE_NONE)
-      eval = evaluate(pos);
-    ss->staticEval = eval;
-
-    if (eval == VALUE_DRAW)
-      eval = value_draw(pos);
+    ss->staticEval = eval = tte_eval(tte);
+    if (eval == VALUE_NONE)
+      ss->staticEval = eval = evaluate(pos);
+    else
+      complexity = abs(ss->staticEval - abs(eg_value(psq_score())));
 
     // Can ttValue be used as a better position evaluation?
     if (   ttValue != VALUE_NONE
         && (tte_bound(tte) & (ttValue > eval ? BOUND_LOWER : BOUND_UPPER)))
       eval = ttValue;
   } else {
-    if ((ss-1)->currentMove != MOVE_NULL)
-      ss->staticEval = eval = evaluate(pos);
-    else
-      ss->staticEval = eval = -(ss-1)->staticEval;
+    ss->staticEval = eval = evaluate(pos);
 
-    tte_save(tte, posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, 0,
-        eval);
+    if (!excludedMove)
+      tte_save(tte, posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, 0,
+          eval);
   }
 
   if (   move_is_ok((ss-1)->currentMove)
       && !(ss-1)->checkersBB
       && !captured_piece())
   {
-    int bonus = clamp(-depth * 4 * ((ss-1)->staticEval + ss->staticEval), -1000, 1000);
+    int bonus = clamp(-19 * ((ss-1)->staticEval + ss->staticEval), -1914, 1914);
     history_update(*pos->mainHistory, !stm(), (ss-1)->currentMove, bonus);
   }
 
