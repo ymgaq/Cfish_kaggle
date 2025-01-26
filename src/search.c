@@ -680,7 +680,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   Move ttMove, move, excludedMove, bestMove;
   Depth extension, newDepth;
   Value bestValue, value, ttValue, eval, maxValue, probCutBeta;
-  bool formerPv, givesCheck, improving, didLMR;
+  bool givesCheck, improving;
   bool captureOrPromotion, inCheck, doFullDepthSearch, moveCountPruning;
   bool ttCapture, singularQuietLMR;
   Piece movedPiece;
@@ -766,7 +766,6 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   ttCapture = ttMove && is_capture(pos, ttMove);
   if (!excludedMove)
     ss->ttPv = PvNode || (ss->ttHit && tte_is_pv(tte));
-  formerPv = ss->ttPv && !PvNode;
 
   // At non-PV nodes we check for an early TT cutoff.
   if (  !PvNode
