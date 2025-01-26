@@ -158,7 +158,6 @@ void search_clear(void)
     stats_clear(pos->counterMoves);
     stats_clear(pos->mainHistory);
     stats_clear(pos->captureHistory);
-    stats_clear(pos->lowPlyHistory);
   }
 
   TB_release();

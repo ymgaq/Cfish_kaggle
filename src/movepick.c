@@ -79,7 +79,6 @@ static void score_quiets(const Position *pos)
 {
   Stack *st = pos->st;
   ButterflyHistory *history = pos->mainHistory;
-  LowPlyHistory *lph = pos->lowPlyHistory;
 
   PieceToHistory *cmh = (st-1)->history;
   PieceToHistory *fmh = (st-2)->history;
@@ -92,12 +91,11 @@ static void score_quiets(const Position *pos)
     uint32_t move = m->move & 4095;
     Square to = move & 63;
     Square from = move >> 6;
-    m->value =      (*history)[c][move]
+    m->value =  2 * (*history)[c][move]
               + 2 * (*cmh)[piece_on(from)][to]
               +     (*fmh)[piece_on(from)][to]
               +     (*fmh2)[piece_on(from)][to]
-              +     (*fmh3)[piece_on(from)][to]
-              + (st->mp_ply < MAX_LPH ? min(4, st->depth / 3) * (*lph)[st->mp_ply][move] : 0);
+              +     (*fmh3)[piece_on(from)][to];
   }
 }
 
@@ -114,11 +112,11 @@ static void score_evasions(const Position *pos)
   for (ExtMove *m = st->cur; m < st->endMoves; m++)
     if (is_capture(pos, m->move))
       m->value =  PieceValue[MG][piece_on(to_sq(m->move))]
-                - type_of_p(moved_piece(m->move));
+                - type_of_p(moved_piece(m->move))
+                + (1 << 28);
     else
-      m->value =      (*history)[c][from_to(m->move)]
-                + 2 * (*cmh)[moved_piece(m->move)][to_sq(m->move)]
-                - (1 << 28);
+      m->value =  (*history)[c][from_to(m->move)]
+                + (*cmh)[moved_piece(m->move)][to_sq(m->move)];
 }
 
 
