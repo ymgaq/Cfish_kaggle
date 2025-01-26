@@ -100,7 +100,7 @@ static THREAD_FUNC thread_init(void *arg)
     pos = calloc(sizeof(Position), 1);
 #ifndef NNUE_PURE
     pos->pawnTable = calloc(PAWN_ENTRIES * sizeof(PawnEntry), 1);
-    pos->materialTable = calloc(8192 * sizeof(MaterialEntry), 1);
+    pos->materialTable = calloc(1024 * sizeof(MaterialEntry), 1);
 #endif
     pos->counterMoves = calloc(sizeof(CounterMoveStat), 1);
     pos->mainHistory = calloc(sizeof(ButterflyHistory), 1);
@@ -153,12 +153,19 @@ static void thread_create(int idx)
 
   pthread_t thread;
 
+  // スタックサイズを128kbに設定
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, 128 * 1024);
+
   Threads.initializing = true;
   pthread_mutex_lock(&Threads.mutex);
-  pthread_create(&thread, NULL, thread_init, (void *)(intptr_t)idx);
+  pthread_create(&thread, &attr, thread_init, (void *)(intptr_t)idx);
   while (Threads.initializing)
     pthread_cond_wait(&Threads.sleepCondition, &Threads.mutex);
   pthread_mutex_unlock(&Threads.mutex);
+
+  pthread_attr_destroy(&attr);
 
 #else
 
