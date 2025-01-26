@@ -83,14 +83,14 @@ ifeq ($(ARCH),)
     empty_arch = yes
 endif
 
-nnue = yes
+nnue = no
 pure = no
 sparse = yes
 optimize = yes
 lto = no
 debug = no
 sanitize = no
-numa = yes
+numa = no
 bits = 64
 prefetch = no
 popcnt = no
@@ -575,7 +575,7 @@ endif
 ### 3.3 Optimization
 ifeq ($(optimize),yes)
 
-	CFLAGS += -O3
+	CFLAGS += -Os
 
 	ifeq ($(comp),$(filter $(comp),gcc mingw))
 		ifeq ($(extra),yes)
@@ -797,7 +797,6 @@ help:
 	@echo ""
 	@echo "help                    > Display architecture details"
 	@echo "build                   > Standard build"
-	@echo "net                     > Download the default nnue net"
 	@echo "profile-build (or pgo)  > PGO build"
 	@echo "strip                   > Strip executable"
 	@echo "install                 > Install executable"
@@ -892,15 +891,6 @@ install:
 
 clean: objclean profileclean
 	@rm -f .depend core
-
-net:
-	$(eval nnuenet := $(shell grep DefaultEvalFile evaluate.h | sed 's/.*\(nn-[a-z0-9]\{12\}.nnue\).*/\1/'))
-	@echo "Default net: $(nnuenet)"
-	$(eval nnuedownloadurl := https://tests.stockfishchess.org/api/nn/$(nnuenet))
-	$(eval curl_or_wget := $(shell if hash curl 2>/dev/null; then echo "curl -skL"; elif hash wget 2>/dev/null; then echo "wget -qO-"; fi))
-	@if test -f "$(nnuenet)"; then echo "Already available."; else echo "Downloading $(nnuedownloadurl)"; $(curl_or_wget) $(nnuedownloadurl) > $(nnuenet); fi
-	$(eval shasum_command := $(shell if hash shasum 2>/dev/null; then echo "shasum -a 256 "; elif hash sha256sum 2>/dev/null; then echo "sha256sum "; fi))
-	@if [ "$(nnuenet)" != "nn-"`$(shasum_command) $(nnuenet) | cut -c1-12`".nnue" ]; then echo "Failed download or $(nnuenet) corrupted, please delete!"; exit 1; fi
 
 # clean binaries and objects
 objclean:

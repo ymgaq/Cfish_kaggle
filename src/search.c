@@ -403,8 +403,11 @@ void thread_search(Position *pos)
   }
   (ss-1)->endMoves = pos->moveList;
 
-  for (int i = -7; i < 0; i++)
+  for (int i = -7; i < 0; i++) {
     ss[i].history = &(*pos->counterMoveHistory)[0][0][0][0]; // Use as sentinel
+    ss[i].staticEval = VALUE_NONE;
+    ss[i].checkersBB = 0;
+  }
 
   for (int i = 0; i <= MAX_PLY; i++)
     ss[i].ply = i;

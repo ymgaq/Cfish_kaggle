@@ -107,7 +107,7 @@ static Option optionsMap[] = {
   { "Analysis Contempt", OPT_TYPE_COMBO, 0, 0, 0,
     "Off var Off var White var Black", NULL, 0, NULL },
   { "Threads", OPT_TYPE_SPIN, 1, 1, MAX_THREADS, NULL, on_threads, 0, NULL },
-  { "Hash", OPT_TYPE_SPIN, 16, 1, MAXHASHMB, NULL, on_hash_size, 0, NULL },
+  { "Hash", OPT_TYPE_SPIN, 1, 1, MAXHASHMB, NULL, on_hash_size, 0, NULL },
   { "Clear Hash", OPT_TYPE_BUTTON, 0, 0, 0, NULL, on_clear_hash, 0, NULL },
   { "Ponder", OPT_TYPE_CHECK, 0, 0, 0, NULL, NULL, 0, NULL },
   { "MultiPV", OPT_TYPE_SPIN, 1, 1, 500, NULL, NULL, 0, NULL },
@@ -133,7 +133,7 @@ static Option optionsMap[] = {
     "Hybrid var Hybrid var Pure var Classical", NULL, 0, NULL },
 #endif
 #endif
-  { "LargePages", OPT_TYPE_CHECK, 1, 0, 0, NULL, on_large_pages, 0, NULL },
+  { "LargePages", OPT_TYPE_CHECK, 0, 0, 0, NULL, on_large_pages, 0, NULL },
   { "NUMA", OPT_TYPE_STRING, 0, 0, 0, "all", on_numa, 0, NULL },
   { 0 }
 };
