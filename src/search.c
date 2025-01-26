@@ -886,24 +886,36 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     history_update(*pos->mainHistory, !stm(), (ss-1)->currentMove, bonus);
   }
 
-  improving =  (ss-2)->staticEval == VALUE_NONE
-             ? (ss->staticEval > (ss-4)->staticEval || (ss-4)->staticEval == VALUE_NONE)
-             :  ss->staticEval > (ss-2)->staticEval;
+  improvement =   (ss-2)->staticEval != VALUE_NONE ? ss->staticEval - (ss-2)->staticEval
+                : (ss-4)->staticEval != VALUE_NONE ? ss->staticEval - (ss-4)->staticEval
+                :                                    168;
+  improving = improvement > 0;
+
+  // Step 6.5. Razoring.
+  // If eval is really low check with qsearch if it can exceed alpha, if it can't,
+  // return a fail low.
+  if (eval < alpha - 369 - 254 * depth * depth)
+  {
+      value = inCheck ? qsearch_NonPV_true(pos, ss, alpha, 0)
+                      : qsearch_NonPV_false(pos, ss, alpha, 0);
+      if (value < alpha)
+          return value;
+  }
 
   // Step 7. Futility pruning: child node
   if (   !PvNode
-      &&  depth < 9
-      &&  eval - futility_margin(depth, improving) >= beta
-      &&  eval < VALUE_KNOWN_WIN)  // Do not return unproven wins
+      &&  depth < 8
+      &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 303 >= beta
+      &&  eval < 28031)  // Do not return unproven wins
     return eval; // - futility_margin(depth); (do not do the right thing)
 
   // Step 8. Null move search with verification search (is omitted in PV nodes)
   if (   !PvNode
       && (ss-1)->currentMove != MOVE_NULL
-      && (ss-1)->statScore < 24185
+      && (ss-1)->statScore < 17139
       && eval >= beta
       && eval >= ss->staticEval
-      && ss->staticEval >= beta - 24 * depth - 34 * improving + 162 * ss->ttPv + 159
+      && ss->staticEval >= beta - 20 * depth - improvement / 13 + 233 + complexity / 25
       && !excludedMove
       && non_pawn_material_c(stm())
       && (ss->ply >= pos->nmpMinPly || stm() != pos->nmpColor))
@@ -911,7 +923,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     assert(eval - beta >= 0);
 
     // Null move dynamic reduction based on depth and value
-    Depth R = (1062 + 68 * depth) / 256 + min((eval - beta) / 190, 3);
+    Depth R = min((eval - beta) / 168, 7) + depth / 3 + 4 - (complexity > 861);
 
     ss->currentMove = MOVE_NULL;
     ss->history = &(*pos->counterMoveHistory)[0][0];
@@ -945,7 +957,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
     }
   }
 
-  probCutBeta = beta + 209 - 44 * improving;
+  probCutBeta = beta + 191 - 54 * improving;
 
   // Step 9. ProbCut
   // If we have a good enough capture and a reduced search returns a value
@@ -959,18 +971,10 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
            && ttValue < probCutBeta))
   {
     mp_init_pc(pos, ttMove, probCutBeta - ss->staticEval);
-    int probCutCount = 2 + 2 * cutNode;
-    bool ttPv = ss->ttPv;
-    ss->ttPv = false;
 
-    while (  (move = next_move(pos, 0))
-           && probCutCount)
+    while (  (move = next_move(pos, 0)))
       if (move != excludedMove && is_legal(pos, move)) {
         assert(is_capture_or_promotion(pos, move));
-        assert(depth >= 5);
-
-        captureOrPromotion = true;
-        probCutCount--;
 
         ss->currentMove = move;
         ss->history = &(*pos->counterMoveHistory)[moved_piece(move)][to_sq(move)];
@@ -988,19 +992,20 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
         undo_move(pos, move);
         if (value >= probCutBeta) {
-          if (!(   ss->ttHit
-                && tte_depth(tte) >= depth - 3
-                && ttValue != VALUE_NONE))
-            tte_save(tte, posKey, value_to_tt(value, ss->ply), ttPv,
-                BOUND_LOWER, depth - 3, move, ss->staticEval);
+          tte_save(tte, posKey, value_to_tt(value, ss->ply), ss->ttPv,
+              BOUND_LOWER, depth - 3, move, ss->staticEval);
           return value;
         }
       }
-    ss->ttPv = ttPv;
   }
 
   // Step 10. If the position is not in TT, decrease depth by 2
-  if (PvNode && depth >= 6 && !ttMove)
+  if (PvNode && !ttMove)
+    depth -= 3;
+  if (depth <= 0)
+    return inCheck ? qsearch_PV_true(pos, ss, alpha, beta, 0)
+                   : qsearch_PV_false(pos, ss, alpha, beta, 0);
+  if (cutNode && depth >= 9 && !ttMove)
     depth -= 2;
 
 moves_loop: // When in check search starts from here
@@ -1008,7 +1013,7 @@ moves_loop: // When in check search starts from here
   ttCapture = ttMove && is_capture_or_promotion(pos, ttMove);
 
   // Step 11. A small Probcut idea, when we are in check
-  probCutBeta = beta + 400;
+  probCutBeta = beta + 417;
   if (   inCheck
       && !PvNode
       && depth >= 4
@@ -1080,7 +1085,7 @@ moves_loop: // When in check search starts from here
       (ss+1)->pv = NULL;
 
     extension = 0;
-    captureOrPromotion = is_capture_or_promotion(pos, move);
+    captureOrPromotion = is_capture(pos, move);
     movedPiece = moved_piece(move);
 
     givesCheck = gives_check(pos, ss, move);
@@ -1106,35 +1111,37 @@ moves_loop: // When in check search starts from here
       {
         // Capture history based pruning when the move doesn't give check
         if (   !givesCheck
-            && lmrDepth < 1
-            && (*pos->captureHistory)[movedPiece][to_sq(move)][type_of_p(piece_on(to_sq(move)))] < 0)
+            && !PvNode
+            && lmrDepth < 7
+            && !inCheck
+            && ss->staticEval + 180 + 201 * lmrDepth + PieceValue[EG][piece_on(to_sq(move))]
+              + (*pos->captureHistory)[movedPiece][to_sq(move)][type_of_p(piece_on(to_sq(move)))] / 6 < alpha)
           continue;
 
         // SEE based pruning
-        if (!see_test(pos, move, -218 * depth))
+        if (!see_test(pos, move, -222 * depth))
           continue;
 
       } else {
-
+        int history = (*cmh)[movedPiece][to_sq(move)]
+                    + (*fmh)[movedPiece][to_sq(move)]
+                    + (*fmh2)[movedPiece][to_sq(move)];
         // Countermoves based pruning
-        if (   lmrDepth < 4
-            && (*cmh )[movedPiece][to_sq(move)] < CounterMovePruneThreshold
-            && (*fmh )[movedPiece][to_sq(move)] < CounterMovePruneThreshold)
+        if (   lmrDepth < 5
+            && history < -3875 * (depth - 1))
           continue;
 
+        history += 2 * (*pos->mainHistory)[stm()][to_sq(move)];
+
         // Futility pruning: parent node
-        if (   lmrDepth < 7
+        if (   lmrDepth < 13
             && !inCheck
-            && ss->staticEval + 174 + 157 * lmrDepth <= alpha
-            &&  (*cmh )[movedPiece][to_sq(move)]
-              + (*fmh )[movedPiece][to_sq(move)]
-              + (*fmh2)[movedPiece][to_sq(move)]
-              + (*fmh3)[movedPiece][to_sq(move)] / 3 < 28255)
+            && ss->staticEval + 106 + 145 * lmrDepth + history / 52 <= alpha)
           continue;
 
         // Prune moves with negative SEE at low depths and below a decreasing
         // threshold at higher depths.
-        if (!see_test(pos, move, -(30 - min(lmrDepth, 18)) * lmrDepth * lmrDepth))
+        if (!see_test(pos, move, -24 * lmrDepth * lmrDepth - 15 * lmrDepth))
           continue;
       }
     }
@@ -1146,7 +1153,9 @@ moves_loop: // When in check search starts from here
     // that move is singular and should be extended. To verify this we do a
     // reduced search on all the other moves but the ttMove and if the
     // result is lower than ttValue minus a margin, then we extend the ttMove.
-    if (    depth >= 7
+    if (ss->ply < pos->rootDepth * 2)
+    {
+    if (    depth >= 4 + 2 * (PvNode && tte_is_pv(tte))
         &&  move == ttMove
         && !rootNode
         && !excludedMove // No recursive singular search
@@ -1155,8 +1164,8 @@ moves_loop: // When in check search starts from here
         && (tte_bound(tte) & BOUND_LOWER)
         &&  tte_depth(tte) >= depth - 3)
     {
-      Value singularBeta = ttValue - ((formerPv + 4) * depth) / 2;
-      Depth singularDepth = (depth - 1 + 3 * formerPv) / 2;
+      Value singularBeta = ttValue - (3 + (ss->ttPv && !PvNode)) * depth;
+      Depth singularDepth = (depth - 1) / 2;
       ss->excludedMove = move;
       Move cm = ss->countermove;
       Move k1 = ss->mpKillers[0], k2 = ss->mpKillers[1];
@@ -1166,7 +1175,9 @@ moves_loop: // When in check search starts from here
       if (value < singularBeta) {
         extension = 1;
         singularQuietLMR = !ttCapture;
-        if (!PvNode && value < singularBeta - 140)
+        if (  !PvNode
+            && value < singularBeta - 25
+            && ss->doubleExtensions <= 9)
           extension = 2;
       }
 
@@ -1187,13 +1198,16 @@ moves_loop: // When in check search starts from here
         ss->countermove = cm; // pedantic
         ss->mpKillers[0] = k1; ss->mpKillers[1] = k2;
 
-        ss->excludedMove = move;
-        value = search_NonPV(pos, ss, beta - 1, (depth + 3) / 2, cutNode);
-        ss->excludedMove = 0;
+        // ss->excludedMove = move;
+        // value = search_NonPV(pos, ss, beta - 1, (depth + 3) / 2, cutNode);
+        // ss->excludedMove = 0;
+        extension = -2;
 
         if (value >= beta)
           return beta;
       }
+      else if (ttValue <= alpha && ttValue <= value)
+        extension = -1;
 
       // The call to search_NonPV with the same value of ss messed up our
       // move picker data. So we fix it.
@@ -1203,9 +1217,21 @@ moves_loop: // When in check search starts from here
       ss->mpKillers[0] = k1; ss->mpKillers[1] = k2;
 
     }
+    else if (  givesCheck
+            && depth > 9
+            && abs(ss->staticEval) > 82)
+      extension = 1;
+    // Quiet ttMove extensions (~0 Elo)
+    else if (  PvNode
+            && move == ttMove
+            && move == ss->killers[0]
+            && (*cmh)[movedPiece][to_sq(move)] >= 5177)
+      extension = 1;
+    }
 
     // Add extension to new depth
     newDepth += extension;
+    ss->doubleExtensions = (ss-1)->doubleExtensions + (extension == 2);
 
     // Speculative prefetch as early as possible
     prefetch(tt_first_entry(key_after(pos, move)));
