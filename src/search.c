@@ -851,6 +851,7 @@ INLINE Value search_node(Position *pos, Stack *ss, Value alpha, Value beta,
   if (   !PvNode
       &&  depth < 8
       &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 303 >= beta
+      &&  eval >= beta
       &&  eval < 28031)  // Do not return unproven wins
     return eval; // - futility_margin(depth); (do not do the right thing)
 
@@ -961,7 +962,7 @@ moves_loop: // When in check search starts from here
   probCutBeta = beta + 417;
   if (   inCheck
       && !PvNode
-      && depth >= 4
+      && depth >= 2
       && ttCapture
       && (tte_bound(tte) & BOUND_LOWER)
       && tte_depth(tte) >= depth - 3
@@ -1147,9 +1148,6 @@ moves_loop: // When in check search starts from here
         // value = search_NonPV(pos, ss, beta - 1, (depth + 3) / 2, cutNode);
         // ss->excludedMove = 0;
         extension = -2;
-
-        if (value >= beta)
-          return beta;
       }
       else if (ttValue <= alpha && ttValue <= value)
         extension = -1;
@@ -1219,6 +1217,9 @@ moves_loop: // When in check search starts from here
 
       if (cutNode)
         r += 2;
+
+      if (ttCapture)
+        r++;
       
       if (PvNode)
         r -= 1 + 11 / (3 + depth);
@@ -1590,12 +1591,6 @@ INLINE Value qsearch_node(Position *pos, Stack *ss, Value alpha, Value beta,
 
     // Speculative prefetch as early as possible
     prefetch(tt_first_entry(key_after(pos, move)));
-
-    // Check for legality just before making the move
-    if (!is_legal(pos, move)) {
-      moveCount--;
-      continue;
-    }
 
     ss->currentMove = move;
     bool captureOrPromotion = is_capture(pos, move);
