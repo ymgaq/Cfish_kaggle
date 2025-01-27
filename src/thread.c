@@ -105,7 +105,7 @@ static THREAD_FUNC thread_init(void *arg)
     pos->captureHistory = calloc(sizeof(CapturePieceToHistory), 1);
     pos->rootMoves = calloc(sizeof(RootMoves), 1);
     pos->stackAllocation = calloc(63 + (MAX_PLY + 110) * sizeof(Stack), 1);
-    pos->moveList = calloc(1000 * sizeof(ExtMove), 1);
+    pos->moveList = calloc(10000 * sizeof(ExtMove), 1);
   }
   pos->stack = (Stack *)(((uintptr_t)pos->stackAllocation + 0x3f) & ~0x3f);
   pos->threadIdx = idx;
