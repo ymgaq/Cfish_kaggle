@@ -61,6 +61,7 @@ void thread_wait(Position *pos, atomic_bool *b);
 struct MainThread {
   double previousTimeReduction;
   Value previousScore;
+  Value bestPreviousAverageScore;
   Value iterValue[4];
 };
 

@@ -72,20 +72,24 @@ void time_init(Color us, int ply)
   // If there is a healthy increment, timeLeft can exceed actual available
   // game time for the current move, so also cap to 20% of available game time.
   if (Limits.movestogo == 0) {
-    optScale = min(0.0084 + pow(ply + 3.0, 0.5) * 0.0042,
-                    0.2 * Limits.time[us] / (double)timeLeft);
-    maxScale = min(7.0, 4.0 + ply / 12.0);
+    double optExtra = clamp(optExtraA / 100.0 + optExtraB / 10.0 * Limits.inc[us] / Limits.time[us], 1.0, optExtraC / 100.0);
+    double optConstant = min(optConstantA / 100000.0 + optConstantB / 100000.0 * log10(Limits.time[us] / 1000.0), optConstantC / 10000.0);
+    double maxConstant = max(maxConstantA / 100.0 + maxConstantB / 100.0 * log10(Limits.time[us] / 1000.0), maxConstantC / 100.0);
+
+    optScale = min(optScaleA / 10000.0 + pow(ply + optScaleB / 10.0, optScaleC / 100.0) * optConstant,
+                        optScaleD / 100.0 * Limits.time[us] / (double)timeLeft) * optExtra;
+    maxScale = min(maxScaleA / 10.0, maxConstant + ply / (maxScaleB / 10.0));
   }
   // x moves in y seconds (+z increment)
   else {
-    optScale = min((0.8 + ply / 120.0) / mtg,
-                     0.8 * Limits.time[us] / (double)timeLeft);
+    optScale = min((0.88 + ply / 116.4) / mtg,
+                     0.88 * Limits.time[us] / (double)timeLeft);
     maxScale = min(6.3, 1.5 + 0.11 * mtg);
   }
 
   // Never use more than 80% of the available time for this move
   Time.optimumTime = optScale * timeLeft;
-  Time.maximumTime = min(0.8 * Limits.time[us] - moveOverhead, maxScale * Time.optimumTime);
+  Time.maximumTime = min(maximumTimeA / 100.0 * Limits.time[us] - moveOverhead, maxScale * Time.optimumTime) - maximumTimeB;
 
   if (use_time_management()) {
     int strength = log(max(1, (int)(Time.optimumTime * Threads.numThreads  / 10))) * 60;
