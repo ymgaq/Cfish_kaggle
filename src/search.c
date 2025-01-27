@@ -476,12 +476,13 @@ void thread_search(Position *pos)
 
       // Reset aspiration window starting size
       if (pos->rootDepth >= 4) {
-        Value previousScore = rm->move[pvIdx].averageScore;
-        delta = 10 + previousScore * previousScore / 15620;
-        alpha = max(previousScore - delta, -VALUE_INFINITE);
-        beta  = min(previousScore + delta,  VALUE_INFINITE);
+        Value prev = rm->move[pvIdx].averageScore;
+        delta = 10 + prev * prev / 15620;
+        alpha = max(prev - delta, -VALUE_INFINITE);
+        beta  = min(prev + delta,  VALUE_INFINITE);
 
         // Adjust contempt based on root move's previousScore
+        Value previousScore = rm->move[pvIdx].previousScore;
         int ct = base_ct + (113 - base_ct / 2) * previousScore / (abs(previousScore) + 147);
         pos->contempt = stm() == WHITE ?  make_score(ct, ct / 2)
                                        : -make_score(ct, ct / 2);
@@ -492,7 +493,7 @@ void thread_search(Position *pos)
       // high/low anymore.
       pos->failedHighCnt = 0;
       while (true) {
-        Depth adjustedDepth = max(1, pos->rootDepth - pos->failedHighCnt - searchAgainCounter);
+        Depth adjustedDepth = max(1, pos->rootDepth - pos->failedHighCnt - 3 * (searchAgainCounter + 1) / 4);
         bestValue = search_PV(pos, ss, alpha, beta, adjustedDepth);
 
         // Bring the best move to the front. It is critical that sorting
@@ -532,7 +533,7 @@ void thread_search(Position *pos)
         } else
           break;
 
-        delta += delta / 4 + 5;
+        delta += delta / 4 + 2;
 
         assert(alpha >= -VALUE_INFINITE && beta <= VALUE_INFINITE);
       }
