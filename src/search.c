@@ -350,9 +350,10 @@ void mainthread_search(void)
   mainThread.previousScore = bestThread->rootMoves->move[0].score;
 
   // Send new PV when needed
-  if (bestThread != pos)
-    uci_print_pv(bestThread, bestThread->completedDepth,
-                 -VALUE_INFINITE, VALUE_INFINITE);
+  // if (bestThread != pos)
+  //   uci_print_pv(bestThread, bestThread->completedDepth,
+  //                -VALUE_INFINITE, VALUE_INFINITE);
+  uci_print_pv(pos, pos->completedDepth, -VALUE_INFINITE, VALUE_INFINITE);
 
   flockfile(stdout);
   printf("bestmove %s", uci_move(buf, bestThread->rootMoves->move[0].pv[0], is_chess960()));
@@ -510,11 +511,11 @@ void thread_search(Position *pos)
 
         // When failing high/low give some update (without cluttering
         // the UI) before a re-search.
-        if (   pos->threadIdx == 0
-            && multiPV == 1
-            && (bestValue <= alpha || bestValue >= beta)
-            && time_elapsed() > 3000)
-          uci_print_pv(pos, pos->rootDepth, alpha, beta);
+        // if (   pos->threadIdx == 0
+        //     && multiPV == 1
+        //     && (bestValue <= alpha || bestValue >= beta)
+        //     && time_elapsed() > 3000)
+        //   uci_print_pv(pos, pos->rootDepth, alpha, beta);
 
         // In case of failing low/high increase aspiration window and
         // re-search, otherwise exit the loop.
@@ -540,9 +541,9 @@ void thread_search(Position *pos)
       stable_sort(&rm->move[pvFirst], pvIdx - pvFirst + 1);
 
 skip_search:
-      if (    pos->threadIdx == 0
-          && (Threads.stop || pvIdx + 1 == multiPV || time_elapsed() > 3000))
-        uci_print_pv(pos, pos->rootDepth, alpha, beta);
+      // if (    pos->threadIdx == 0
+      //     && (Threads.stop || pvIdx + 1 == multiPV || time_elapsed() > 3000))
+      //   uci_print_pv(pos, pos->rootDepth, alpha, beta);
     }
 
     if (!Threads.stop)
@@ -1015,14 +1016,14 @@ moves_loop: // When in check search starts from here
 
     ss->moveCount = ++moveCount;
 
-    if (rootNode && pos->threadIdx == 0 && time_elapsed() > 3000) {
-      char buf[16];
-      printf("info depth %d currmove %s currmovenumber %d\n",
-             depth,
-             uci_move(buf, move, is_chess960()),
-             moveCount + pos->pvIdx);
-      fflush(stdout);
-    }
+    // if (rootNode && pos->threadIdx == 0 && time_elapsed() > 3000) {
+    //   char buf[16];
+    //   printf("info depth %d currmove %s currmovenumber %d\n",
+    //          depth,
+    //          uci_move(buf, move, is_chess960()),
+    //          moveCount + pos->pvIdx);
+    //   fflush(stdout);
+    // }
 
     if (PvNode)
       (ss+1)->pv = NULL;
