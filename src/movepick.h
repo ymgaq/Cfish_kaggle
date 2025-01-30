@@ -30,7 +30,7 @@
 
 #define stats_clear(s) memset(s, 0, sizeof(*s))
 
-static const int CounterMovePruneThreshold = 0;
+static const int CounterMovePruneThreshold = -8;
 
 INLINE void cms_update(PieceToHistory cms, Piece pc, Square to, int v)
 {
