@@ -59,7 +59,8 @@ void position(Position *pos, char *str)
     return;
 
   pos->st = pos->stack + 100; // Start of circular buffer of 100 slots.
-  pos_set(pos, fen, option_value(OPT_CHESS960));
+  pos_set(pos, fen, 0);
+  // pos_set(pos, fen, option_value(OPT_CHESS960));
 
   // Parse move list (if any).
   if (moves) {
@@ -308,9 +309,9 @@ void uci_loop(int argc, char **argv)
     else if (strcmp(token, "uci") == 0) {
       flockfile(stdout);
       printf("id name ");
-      print_engine_info(true);
+      // print_engine_info(true);
       printf("\n");
-      print_options();
+      // print_options();
       printf("uciok\n");
       fflush(stdout);
       funlockfile(stdout);

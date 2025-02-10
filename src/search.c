@@ -26,7 +26,6 @@
 #include "misc.h"
 #include "movegen.h"
 #include "movepick.h"
-#include "polybook.h"
 #include "search.h"
 #include "settings.h"
 #include "timeman.h"
@@ -228,23 +227,19 @@ void mainthread_search(void)
   }
 #endif
 
-  base_ct = option_value(OPT_CONTEMPT) * PawnValueEg / 100;
+  // base_ct = option_value(OPT_CONTEMPT) * PawnValueEg / 100;
+  base_ct = 24 * PawnValueEg / 100;
 
-  const char *s = option_string_value(OPT_ANALYSIS_CONTEMPT);
-  if (Limits.infinite || option_value(OPT_ANALYSE_MODE))
-    base_ct =  strcmp(s, "off") == 0 ? 0
-             : strcmp(s, "white") == 0 && us == BLACK ? -base_ct
-             : strcmp(s, "black") == 0 && us == WHITE ? -base_ct
-             : base_ct;
+  // const char *s = option_string_value(OPT_ANALYSIS_CONTEMPT);
+  // if (Limits.infinite || option_value(OPT_ANALYSE_MODE))
+  // if (Limits.infinite)
+  //   base_ct =  strcmp(s, "off") == 0 ? 0
+  //            : strcmp(s, "white") == 0 && us == BLACK ? -base_ct
+  //            : strcmp(s, "black") == 0 && us == WHITE ? -base_ct
+  //            : base_ct;
 
   if (pos->rootMoves->size > 0) {
     Move bookMove = 0;
-
-    if (!Limits.infinite && !Limits.mate) {
-      bookMove = pb_probe(&polybook, pos);
-      if (!bookMove)
-        bookMove = pb_probe(&polybook2, pos);
-    }
 
     for (int i = 0; i < pos->rootMoves->size; i++)
       if (pos->rootMoves->move[i].pv[0] == bookMove) {
@@ -305,8 +300,7 @@ void mainthread_search(void)
 
   // Check if there are threads with a better score than main thread
   Position *bestThread = pos;
-  if (    option_value(OPT_MULTI_PV) == 1
-      && !playBookMove
+  if (   !playBookMove
       && !Limits.depth
 //      && !Skill(option_value(OPT_SKILL_LEVEL)).enabled()
       &&  pos->rootMoves->move[0].pv[0] != 0)
@@ -414,7 +408,8 @@ void thread_search(Position *pos)
         mainThread.iterValue[i] = mainThread.previousScore;
   }
 
-  int multiPV = option_value(OPT_MULTI_PV);
+  // int multiPV = option_value(OPT_MULTI_PV);
+  int multiPV = 1;
 #if 0
   Skill skill(option_value(OPT_SKILL_LEVEL));
 
@@ -1868,7 +1863,8 @@ static void uci_print_pv(Position *pos, Depth depth, Value alpha, Value beta)
   TimePoint elapsed = time_elapsed() + 1;
   RootMoves *rm = pos->rootMoves;
   int pvIdx = pos->pvIdx;
-  int multiPV = min(option_value(OPT_MULTI_PV), rm->size);
+  // int multiPV = min(option_value(OPT_MULTI_PV), rm->size);
+  int multiPV = min(1, rm->size);
   uint64_t nodes_searched = threads_nodes_searched();
   uint64_t tbhits = threads_tb_hits();
   char buf[16];

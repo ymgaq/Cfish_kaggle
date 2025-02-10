@@ -253,40 +253,40 @@ INLINE unsigned distance_r(Square x, Square y)
 
 #define attacks_bb_queen(s, occupied) (attacks_bb_bishop((s), (occupied)) | attacks_bb_rook((s), (occupied)))
 
-// #if defined(MAGIC_FANCY)
-// #include "magic-fancy.h"
-// #elif defined(MAGIC_PLAIN)
-// #include "magic-plain.h"
-// #elif defined(MAGIC_BLACK)
-// #include "magic-black.h"
-// #elif defined(BMI2_FANCY)
-// #include "bmi2-fancy.h"
-// #elif defined(BMI2_PLAIN)
-// #include "bmi2-plain.h"
-// #elif defined(AVX2_BITBOARD)
-// #include "avx2-bitboard.h"
-// #endif
+#if defined(MAGIC_FANCY)
+#include "magic-fancy.h"
+#elif defined(MAGIC_PLAIN)
+#include "magic-plain.h"
+#elif defined(MAGIC_BLACK)
+#include "magic-black.h"
+#elif defined(BMI2_FANCY)
+#include "bmi2-fancy.h"
+#elif defined(BMI2_PLAIN)
+#include "bmi2-plain.h"
+#elif defined(AVX2_BITBOARD)
+#include "avx2-bitboard.h"
+#endif
 
-// 各方向のマスクと攻撃テーブル
-extern Bitboard RankAttacks[64][64];
-extern Bitboard FileAttacks[64][64];
-extern Bitboard DiagAttacks[64][64];
-extern Bitboard AntiDiagAttacks[64][64];
+// // 各方向のマスクと攻撃テーブル
+// extern Bitboard RankAttacks[64][64];
+// extern Bitboard FileAttacks[64][64];
+// extern Bitboard DiagAttacks[64][64];
+// extern Bitboard AntiDiagAttacks[64][64];
 
-extern Bitboard RankMasks[64];
-extern Bitboard FileMasks[64];
-extern Bitboard DiagMasks[64];
-extern Bitboard AntiDiagMasks[64];
+// extern Bitboard RankMasks[64];
+// extern Bitboard FileMasks[64];
+// extern Bitboard DiagMasks[64];
+// extern Bitboard AntiDiagMasks[64];
 
-INLINE Bitboard attacks_bb_bishop(Square s, Bitboard occupied)
-{
-  return DiagAttacks[s][pext(occupied, DiagMasks[s])] | AntiDiagAttacks[s][pext(occupied, AntiDiagMasks[s])];
-}
+// INLINE Bitboard attacks_bb_bishop(Square s, Bitboard occupied)
+// {
+//   return DiagAttacks[s][pext(occupied, DiagMasks[s])] | AntiDiagAttacks[s][pext(occupied, AntiDiagMasks[s])];
+// }
 
-INLINE Bitboard attacks_bb_rook(Square s, Bitboard occupied)
-{
-  return RankAttacks[s][pext(occupied, RankMasks[s])] | FileAttacks[s][pext(occupied, FileMasks[s])];
-}
+// INLINE Bitboard attacks_bb_rook(Square s, Bitboard occupied)
+// {
+//   return RankAttacks[s][pext(occupied, RankMasks[s])] | FileAttacks[s][pext(occupied, FileMasks[s])];
+// }
 
 INLINE Bitboard attacks_bb(int pt, Square s, Bitboard occupied)
 {

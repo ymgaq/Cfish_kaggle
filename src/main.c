@@ -23,7 +23,6 @@
 #include "bitboard.h"
 #include "endgame.h"
 #include "pawns.h"
-#include "polybook.h"
 #include "position.h"
 #include "search.h"
 #include "thread.h"
@@ -32,7 +31,7 @@
 
 int main(int argc, char **argv)
 {
-  print_engine_info(false);
+  // print_engine_info(false);
 
   psqt_init();
   bitboards_init();
@@ -50,7 +49,6 @@ int main(int argc, char **argv)
   threads_exit();
   options_free();
   tt_free();
-  pb_free();
   #ifdef NNUE
   nnue_free();
   #endif

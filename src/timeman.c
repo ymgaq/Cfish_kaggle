@@ -34,9 +34,9 @@ struct TimeManagement Time; // Our global time management struct
 
 void time_init(Color us, int ply)
 {
-  int moveOverhead    = option_value(OPT_MOVE_OVERHEAD);
-  int slowMover       = option_value(OPT_SLOW_MOVER);
-  int npmsec          = option_value(OPT_NODES_TIME);
+  int moveOverhead    = 10;  // option_value(OPT_MOVE_OVERHEAD);
+  int slowMover       = 100;  // option_value(OPT_SLOW_MOVER);
+  int npmsec          = 0;  //option_value(OPT_NODES_TIME);
 
   // optScale is a percentage of available time to use for the current move.
   // maxScale is a multiplier applied to optimumTime.
@@ -93,6 +93,6 @@ void time_init(Color us, int ply)
   } else
     Time.tempoNNUE = 28; // default for no time given
 
-  if (option_value(OPT_PONDER))
-    Time.optimumTime += Time.optimumTime / 4;
+  // if (option_value(OPT_PONDER))
+  //   Time.optimumTime += Time.optimumTime / 4;
 }
